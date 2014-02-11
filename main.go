@@ -11,6 +11,7 @@ import (
 	"github.com/crosbymichael/log"
 	"github.com/crosbymichael/skydock/docker"
 	"github.com/crosbymichael/skydock/utils"
+	"github.com/garyburd/redigo/redis"
 	influxdb "github.com/influxdb/influxdb-go"
 	"github.com/skynetservices/skydns/client"
 	"github.com/skynetservices/skydns/msg"
@@ -29,6 +30,7 @@ var (
 	beat             int
 	numberOfHandlers int
 	pluginFile       string
+	hipache          string
 
 	skydns       Skydns
 	dockerClient docker.Docker
@@ -47,6 +49,7 @@ func init() {
 	flag.IntVar(&beat, "beat", 0, "heartbeat interval")
 	flag.IntVar(&numberOfHandlers, "workers", 3, "number of concurrent workers")
 	flag.StringVar(&pluginFile, "plugins", "/plugins/default.js", "file containing javascript plugins (plugins.js)")
+	flag.StringVar(&hipache, "hipacheredis", "", "connection string for Hipache's Redis instance - e.g. 127.0.0.1:6379")
 
 	flag.Parse()
 }
@@ -219,9 +222,15 @@ func eventHandler(c chan *docker.Event, group *sync.WaitGroup) {
 			if err := removeService(uuid); err != nil {
 				log.Logf(log.ERROR, "error removing %s from skydns: %s", uuid, err)
 			}
+			if err := removeFromRedis(event); err != nil {
+				log.Logf(log.ERROR, "error removing %s from hipache: %s", uuid, err)
+			}
 		case "start", "restart":
 			if err := addService(uuid, event.Image); err != nil {
 				log.Logf(log.ERROR, "error adding %s to skydns: %s", uuid, err)
+			}
+			if err := addToRedis(event); err != nil {
+				log.Logf(log.ERROR, "error adding %s to hipache: %s", uuid, err)
 			}
 		}
 	}
@@ -241,8 +250,18 @@ func main() {
 
 	var (
 		err   error
+		r     redis.Conn
 		group = &sync.WaitGroup{}
 	)
+
+	if len(hipache) > 0 {
+		r, err = redis.Dial("tcp", ":6379")
+		if err != nil {
+			log.Logf(log.FATAL, "error connecting to hipache's redis: %s", err)
+			fatal(err)
+		}
+		defer r.Close()
+	}
 
 	plugins, err = newRuntime(pluginFile)
 	if err != nil {

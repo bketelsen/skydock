@@ -179,6 +179,11 @@ docker run -d -v /var/run/docker.sock:/docker.sock -v /myplugins.js:/myplugins.j
 
 Feel free to submit your plugins to this repo under the `plugins/` directory.  
 
+#### Hipache Support
+If you pass in a host:port to connect to a running Hipache's Redis instance, SkyDock will manage your containers' availability in your Hipache instance.  In order to make this work, you need to follow some conventions:
+
+* Your containers must be named to match the public URL you intend to expose in Hipache eg: crosbymichael/www.crosbymichael.com
+* ? more conventions to follow?
 
 #### TODO/ROADMAP
 * Multihost support
